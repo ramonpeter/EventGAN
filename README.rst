@@ -1,6 +1,6 @@
-=========================================================
-Generative Adversarial Networks for LHC Events (EventGAN)
-=========================================================
+===============================================
+Generative Adversarial Networks for LHC Events
+===============================================
 
 This is a **Tensorflow 2** implementation to GAN [1]_ LHC events.
 
