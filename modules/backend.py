@@ -2,9 +2,11 @@
 
 import tensorflow as tf
 
+
 def safer_sqrt(tensor, epsilon=1e-8):
     "A safer sqrt of a tensor"
     return tf.sqrt(tf.maximum(tensor, epsilon))
+
 
 def safer_norm(tensor, axis=None, keep_dims=False, epsilon=1e-8):
     "A safer norm of a tensor"
