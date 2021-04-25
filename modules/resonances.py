@@ -3,6 +3,7 @@
 import tensorflow as tf
 from modules.backend import safer_sqrt
 
+
 class Resonances(tf.keras.layers.Layer):
     """Resonance Layer.
     This function gives the invariant mass of n particles.
@@ -18,11 +19,8 @@ class Resonances(tf.keras.layers.Layer):
             If there are more then one momenta (q = p_1 + p_2 + ..)
             the shape is: `particle_id = [particle_1, particle_2,..]`.
     """
-    def __init__(self,
-                 topology,
-                 scaler=1.0,
 
-                 **kwargs):
+    def __init__(self, topology, scaler=1.0, **kwargs):
 
         self.topology = topology
         self.resonances = len(self.topology)
@@ -30,7 +28,7 @@ class Resonances(tf.keras.layers.Layer):
 
         super().__init__(**kwargs)
 
-    def call(self, inputs): # pylint: disable=arguments-differ
+    def call(self, inputs):  # pylint: disable=arguments-differ
         # Build the actual logic
         res = [0] * self.resonances
         for i in range(self.resonances):
@@ -43,15 +41,15 @@ class Resonances(tf.keras.layers.Layer):
     def _invariant_mass(self, x, particle_id):
         """Calculates the invariant mass of n particles."""
         # pylint: disable=invalid-name
-        Es  = 0
+        Es = 0
         PXs = 0
         PYs = 0
         PZs = 0
         for particle in particle_id:
-            Es  += x[:,0 + particle * 4]
-            PXs += x[:,1 + particle * 4]
-            PYs += x[:,2 + particle * 4]
-            PZs += x[:,3 + particle * 4]
+            Es += x[:, 0 + particle * 4]
+            PXs += x[:, 1 + particle * 4]
+            PYs += x[:, 2 + particle * 4]
+            PZs += x[:, 3 + particle * 4]
 
         m2 = tf.square(Es) - tf.square(PXs) - tf.square(PYs) - tf.square(PZs)
 
@@ -60,7 +58,7 @@ class Resonances(tf.keras.layers.Layer):
 
         # Normalize with respect to data
         m = self.scaler * m
-        m= tf.expand_dims(m,-1)
+        m = tf.expand_dims(m, -1)
         return m
 
     # pylint: enable=invalid-name
@@ -68,9 +66,6 @@ class Resonances(tf.keras.layers.Layer):
         return (input_shape[0], self.resonances)
 
     def get_config(self):
-        config = {
-            'topology': self.topology,
-            'scaler': self.scaler
-        }
+        config = {"topology": self.topology, "scaler": self.scaler}
         base_config = super().get_config()
         return dict(list(base_config.items()) + list(config.items()))
