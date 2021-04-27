@@ -1,5 +1,6 @@
 """Loss functions."""
 
+from typing import List, Tuple
 import tensorflow as tf
 
 def discriminator_regularizer(
@@ -36,7 +37,7 @@ def resonance_loss(
     gen: tf.Tensor,
     real: tf.Tensor,
     kernel: callable,
-    kernel_widths: list,
+    kernel_widths: List[Tuple[float]],
     resonances: int=2
 ):
     """
@@ -56,7 +57,7 @@ def squared_mmd(  # pylint: disable=invalid-name
     x: tf.Tensor,
     y: tf.Tensor,
     kernel: callable,
-    kernel_widths: list,
+    kernel_widths: Tuple[float],
     wts=None
 ):
     r"""
