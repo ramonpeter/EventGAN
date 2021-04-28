@@ -13,5 +13,6 @@ EnventGAN - generative adversarial network based event generator for HEP.
 
 from . import modules
 from . import utils
+from .model import *
 
-__all__ = ["modules", "utils"]
+__all__ = ["modules", "utils", "EventGAN"]
