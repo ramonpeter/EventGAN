@@ -8,7 +8,7 @@
 /********  //**   //****** ***  /**  //**  //******** /**     /**/**    //***
 ////////    //     ////// ///   //    //    ////////  //      // //      ///
 
-EnventGAN - GAN based event generator for HEP.
+EnventGAN - generative adversarial network based event generator for HEP.
 """
 
 from . import modules
