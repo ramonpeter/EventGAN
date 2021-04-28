@@ -2,13 +2,16 @@
 
 import numpy as np
 
+
 # pylint: disable=C0103
 class Observables:
     """
     Contains different functions to calculate 1-dim observables.
     """
 
-    def __init__(self, ):
+    def __init__(
+        self,
+    ):
         self.epsilon = 1e-8
 
     @staticmethod
@@ -118,7 +121,9 @@ class Observables:
                 If there are more then one momenta (q = p_1 + p_2 + ..) the shape is:
                 `particle_id = [particle_1, particle_2,..]`.
         """
-        m = np.sqrt(np.clip(self.invariant_mass_square(x, particle_id), self.epsilon, None))
+        m = np.sqrt(
+            np.clip(self.invariant_mass_square(x, particle_id), self.epsilon, None)
+        )
         return m
 
     @staticmethod
@@ -145,10 +150,12 @@ class Observables:
 
         pTs = PXs2 + PYs2
 
-        pT= np.sqrt(pTs)
+        pT = np.sqrt(pTs)
         return pT
 
-    def transverse_momentum_cut(self, x: np.array, particle_id: list, cut: float=20.):
+    def transverse_momentum_cut(
+        self, x: np.array, particle_id: list, cut: float = 20.0
+    ):
         """This function gives a smoothed out observable of
         the transverse momentum which is affected by a cut.
 
@@ -165,7 +172,9 @@ class Observables:
         trans = np.log(pT - cut)
         return trans
 
-    def transverse_momentum_cut2(self, x: np.array, particle_id: list, cut: float=20.):
+    def transverse_momentum_cut2(
+        self, x: np.array, particle_id: list, cut: float = 20.0
+    ):
         """This function gives smoothed out observable of
         the transverse momentum which is affected by a cut.
 
@@ -260,7 +269,7 @@ class Observables:
 
         return eta
 
-    def pseudo_rapidity_cut(self, x: np.array, particle_id: list, cut: float=6.):
+    def pseudo_rapidity_cut(self, x: np.array, particle_id: list, cut: float = 6.0):
         """
         This function gives a smoothed out observable of
         the pseudo rapidity which is affected by a cut.
@@ -321,8 +330,14 @@ class Observables:
         E2s = x[:, 0 + particle_id[1] * 4]
         PZ2s = x[:, 3 + particle_id[1] * 4]
 
-        y1 = 0.5 * (np.log(np.clip(E1s + PZ1s, self.epsilon, None)) - np.log(np.clip(E1s - PZ1s, self.epsilon, None)))
-        y2 = 0.5 * (np.log(np.clip(E2s + PZ2s, self.epsilon, None)) - np.log(np.clip(E2s - PZ2s, self.epsilon, None)))
+        y1 = 0.5 * (
+            np.log(np.clip(E1s + PZ1s, self.epsilon, None))
+            - np.log(np.clip(E1s - PZ1s, self.epsilon, None))
+        )
+        y2 = 0.5 * (
+            np.log(np.clip(E2s + PZ2s, self.epsilon, None))
+            - np.log(np.clip(E2s - PZ2s, self.epsilon, None))
+        )
         dy = np.abs(y1 - y2)
 
         return dy
@@ -344,7 +359,7 @@ class Observables:
 
         return dR
 
-    def delta_R_cut(self, x: np.array, particle_id: list, cut: float=0.4):
+    def delta_R_cut(self, x: np.array, particle_id: list, cut: float = 0.4):
         """
         This function gives a smoothed out observable of
         delta R which is affected by a cut.
