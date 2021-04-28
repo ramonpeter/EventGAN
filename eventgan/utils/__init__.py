@@ -10,5 +10,13 @@ r""""
 
 from .lhe_writer import *
 from .observables import *
+from .kernels import *
 
-__all__ = ["LHEWriter", "Observables"]
+__all__ = [
+    "LHEWriter",
+    "Observables",
+    "squared_pairwise_dist",
+    "mix_gaussian_kernel",
+    "mix_cauchy_kernel",
+    "mix_breit_wigner_kernel",
+]
