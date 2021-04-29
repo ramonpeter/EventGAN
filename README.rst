@@ -56,7 +56,7 @@ Download + Usage
    cd EventGAN
    python datasets/get_data.py
    # Run the code
-   python event_gan cards/PARAM_CARD.yaml
+   python train_gan cards/PARAM_CARD.yaml
 
 
 Citation
