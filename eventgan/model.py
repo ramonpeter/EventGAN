@@ -377,7 +377,7 @@ class EventGAN:
         grads = tape.gradient(g_loss, generator.trainable_weights)
         g_optimizer.apply_gradients(zip(grads, generator.trainable_weights))
 
-        return d_loss, g_loss, gen_batch
+        return d_loss, g_loss
 
     def train(self, optimizer_args: dict, epochs=1000, batch_size=1024):
         save_dir = "results"
