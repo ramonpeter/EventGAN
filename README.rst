@@ -40,6 +40,8 @@ Dependencies
 +---------------------------+-------------------------------+
 | Numpy                     | >= 1.15.0                     |
 +---------------------------+-------------------------------+
+| wget                      | >= 3.2                        |
++---------------------------+-------------------------------+
 
 
 Download + Usage
@@ -50,8 +52,10 @@ Download + Usage
 
    # clone the repository
    git clone https://github.com/itp-mlhep/EventGAN.git
-   # then run the main file with the param_card
+   # then download the datasets
    cd EventGAN
+   python datasets/get_data.py
+   # Run the code
    python event_gan cards/PARAM_CARD.yaml
 
 
