@@ -1,6 +1,4 @@
-===============================================
-Generative Adversarial Networks for LHC Events
-===============================================
+|Logo|
 
 This is a **Tensorflow 2** implementation to GAN [1]_ LHC events.
 
@@ -82,3 +80,6 @@ If you use this code, please cite:
 
 
 .. [1] From ‘to GAN’, in close analogy to the verbs taylor, google, and sommerfeld.
+
+.. |Logo| image:: docs/eventgan_logo.png
+   :alt: EventGAN
