@@ -1,7 +1,8 @@
 """EventGAN class."""
 
 from typing import List, Union, Tuple
-import time
+import os
+import math
 
 import numpy as np
 import pandas as pd
@@ -11,13 +12,13 @@ import tensorflow as tf
 from sklearn.model_selection import train_test_split
 
 # import custom modules
-import modules.kernels as kf
-from modules.lorentzvector import LorentzVector
-from modules.resonances import Resonances
-from modules.losses import resonance_loss, discriminator_regularizer
+import eventgan.utils.kernels as kf
+from eventgan.modules.lorentzvector import LorentzVector
+from eventgan.modules.resonances import Resonances
+from eventgan.modules.losses import resonance_loss, discriminator_regularizer
 
 
-# pylint: disable=C0103
+# pylint: disable=C0103, W0212
 class EventGAN:
     """
     EventGAN to generate LHC events parametrized as
@@ -32,6 +33,7 @@ class EventGAN:
     def __init__(
         self,
         n_particles: int,
+        latent_dim: int,
         topology: List[Tuple[int]],
         input_masses: list,
         train_data_path: str,
@@ -43,6 +45,7 @@ class EventGAN:
         g_layers: int,
         d_units: int,
         d_layers: int,
+        reg_weight: float,
         use_mmd_loss: bool = False,
         mmd_weight: float = 1.0,
         mmd_kernel: Union[str, callable] = "BREIT-WIGNER",
@@ -52,6 +55,8 @@ class EventGAN:
         Args:
             n_particles:
                 int specifying the number of external particles.
+            latent_dim:
+                int specifying dimension of the latent space.
             topology:
                 a list of integer tuples indicating the possible s-channels
                 of intermediate on-shell resonances. Eg.,
@@ -87,6 +92,9 @@ class EventGAN:
                 in the discriminator.
             d_layers:
                 number of hidden layers in the discriminator.
+            reg_weight:
+                float defining the effect of the disc
+                regularizer.
             use_mmd_loss:
                 switch to use a MMD loss to resolve the resonances.
                 Default is ``False``.
@@ -112,7 +120,7 @@ class EventGAN:
                 kernel it is a good starting point to use the physical
                 widths :math:`\Gamma` of the assumed resonant particle in GeV.
 
-                For instance, lets assume you have a Drell-Yan process,
+                For instance, lets assume we have a Drell-Yan process,
                 like :math:`e^+ e^- -> \mu^+ \mu^-`:
 
                    ---->----|           |---->---- [0]
@@ -138,6 +146,7 @@ class EventGAN:
         """
         # Set process paramaters
         self.n_particles = n_particles
+        self.latent_dim = latent_dim
         self.topology = list(topology)
         self.resonances = len(topology)
 
@@ -179,6 +188,7 @@ class EventGAN:
         self.bc_loss = tf.keras.losses.BinaryCrossentropy(from_logits=True)
         self.mmd_loss = resonance_loss
         self.disc_regularizer = discriminator_regularizer
+        self.reg_weight = reg_weight
 
     def get_generator(self, n_units: int, n_layers: int):
         """
@@ -293,7 +303,8 @@ class EventGAN:
         self.test_data = test_data / self.scaler
         self.masses = masses / self.scaler
 
-    def sample_data(self, data, batch_size):
+    @staticmethod
+    def sample_data(data, batch_size):
         """Get array of samples from loaded data"""
         index = np.arange(data.shape[0])
         if batch_size <= data.shape[0]:
@@ -303,6 +314,13 @@ class EventGAN:
 
         batch = data[choice]
         return tf.convert_to_tensor(batch, dtype=tf.float32)
+
+    def get_events(self, n_samples):
+        """Sample events"""
+        noise = tf.random.normal(shape=(n_samples, self.latent_dim))
+        mass_batch = tf.repeat(self.masses, n_samples, axis=0)
+        events = self.scaler * self.generator([noise, mass_batch])
+        return events.numpy()
 
     @tf.function
     def train_step(
@@ -316,9 +334,9 @@ class EventGAN:
         """Do a single train step"""
 
         # Sample random points in the latent space
-        random_noise = tf.random.normal(shape=(batch_size, latent_dim))
+        random_noise = tf.random.normal(shape=(batch_size, self.latent_dim))
         # Decode them to fake images
-        gen_batch = generator([random_noise, mass_batch])
+        gen_batch = self.generator([random_noise, mass_batch])
 
         # Assemble labels discriminating real from fake images
         ones = tf.ones((batch_size, 1))
@@ -326,8 +344,8 @@ class EventGAN:
 
         # Train the discriminator
         with tf.GradientTape() as tape:
-            logit_real = discriminator(real_batch)
-            logit_fake = discriminator(gen_batch)
+            logit_real = self.discriminator(real_batch)
+            logit_fake = self.discriminator(gen_batch)
 
             # Add gen and real loss
             d_loss = self.bc_loss(ones, logit_real)
@@ -338,20 +356,20 @@ class EventGAN:
                 logit_real, real_batch, logit_fake, gen_batch
             )
 
-            d_loss += gamma / 2 * disc_reg
+            d_loss += self.reg_weight / 2 * disc_reg
 
-        grads = tape.gradient(d_loss, discriminator.trainable_weights)
-        d_optimizer.apply_gradients(zip(grads, discriminator.trainable_weights))
+        grads = tape.gradient(d_loss, self.discriminator.trainable_weights)
+        d_optimizer.apply_gradients(zip(grads, self.discriminator.trainable_weights))
 
         # =========================================================#
 
         # Sample random points in the latent space
-        random_noise = tf.random.normal(shape=(batch_size, latent_dim))
+        random_noise = tf.random.normal(shape=(batch_size, self.latent_dim))
 
         # Train the generator
         with tf.GradientTape() as tape:
-            gen_out = generator(random_noise)
-            logit_fake = discriminator(gen_out)
+            gen_out = self.generator(random_noise)
+            logit_fake = self.discriminator(gen_out)
             g_loss = self.bc_loss(ones, logit_fake)
 
             # Get the masses
@@ -374,25 +392,33 @@ class EventGAN:
 
             g_loss += self.mmd_weight * mmd_loss
 
-        grads = tape.gradient(g_loss, generator.trainable_weights)
-        g_optimizer.apply_gradients(zip(grads, generator.trainable_weights))
+        grads = tape.gradient(g_loss, self.generator.trainable_weights)
+        g_optimizer.apply_gradients(zip(grads, self.generator.trainable_weights))
 
         return d_loss, g_loss
 
-    def train(self, optimizer_args: dict, epochs=1000, batch_size=1024):
-        save_dir = "results"
+    def train(
+        self,
+        optimizer_args: dict,
+        epochs=1000,
+        iterations=1000,
+        batch_size=1024,
+        safe_weights: bool = False,
+        safe_epochs: list = None,
+    ):
+        """ Train the Model """
 
         # Optimizer and scheduler
         lr_schedule_g = tf.keras.optimizers.schedules.InverseTimeDecay(
             optimizer_args["lr_g"],
-            optimizer_args["steps_g"],
+            iterations,
             optimizer_args["decay_g"],
             staircase=True,
         )
 
         lr_schedule_d = tf.keras.optimizers.schedules.InverseTimeDecay(
             optimizer_args["lr_d"],
-            optimizer_args["steps_d"],
+            iterations,
             optimizer_args["decay_d"],
             staircase=True,
         )
@@ -413,38 +439,38 @@ class EventGAN:
         mass_batch = tf.repeat(self.masses, batch_size, axis=0)
 
         for step in range(epochs):
-            #        print("\nStart step", step)
+            epoch = math.floor(step / iterations)
 
             # Online GAN: fetch new batch every step
-            real_batch = tf.convert_to_tensor(draw_samples(batch_size), np.float32)
+            real_batch = tf.convert_to_tensor(
+                self.sample_data(self.train_data, batch_size), np.float32
+            )
 
             # Train the discriminator & generator on one batch of real images.
-            d_loss, g_loss = self.train_step(real_batch, mass_batch, g_optimizer, d_optimizer, batch_size=batch_size)
+            d_loss, g_loss = self.train_step(
+                real_batch, mass_batch, d_optimizer, g_optimizer, batch_size=batch_size
+            )
 
             # Logging.
-            if step % (iterations // 10) == 0:
+            if step % iterations == 0:
                 # Print metrics
                 print(
                     "Epoch #{}: Generative Loss: {}, Discriminator Loss: {}, Learning Rate: {}".format(
                         step, g_loss, d_loss, g_optimizer._decayed_lr(tf.float32)
                     )
                 )
+                if epoch in safe_epochs:
+                    if safe_weights:
+                        if not os.path.exists(
+                            f"{self.save_path}/intermediate/epoch_{epoch}"
+                        ):
+                            os.makedirs(f"{self.save_path}/intermediate/epoch_{epoch}")
 
-                n = int(1e6)
-                # Make the plots
-                noise = np.random.normal(0, 1, size=(n, 2))
-                true = draw_samples(n)
-                gen = generator.predict(noise)
-                plot_log(save_dir, step, true, gen)
+                    self.generator.save_weights(
+                        f"{self.save_path}/intermediate/epoch_{epoch}/weights_c_model.h5"
+                    )
+                    self.discriminator.save_weights(
+                        f"{self.save_path}/intermediate/epoch_{epoch}/weights_c_model.h5"
+                    )
 
-        # make the final plots
-        n = int(1e6)
-        # Make the plots
-        step = "final"
-        noise = np.random.normal(0, 1, size=(n, 2))
-        true = draw_samples(n)
-        gen = generator.predict(noise)
-        plot_log(save_dir, step, true, gen)
-        plot_zoom(save_dir, step, true, gen)
-
-        return losses_array
+        return d_loss, g_loss
