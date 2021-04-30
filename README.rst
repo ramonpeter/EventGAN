@@ -1,8 +1,8 @@
 |Logo|
 
-This is a **Tensorflow 2** implementation to GAN [1]_ LHC events.
+This is a Tensorflow 2 implementation to GAN [1]_ LHC events.
 
-* Use of a **LorentzVector** layer to implement on-shell conditions.
+* Use of a LorentzVector layer to implement on-shell conditions.
 * Adds JS-Regularizer to the discriminator objective (Roth et al, 2017).
 * Adds maximum mean discrepancy (MMD) to capture resonances.
 
