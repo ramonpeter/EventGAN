@@ -42,7 +42,7 @@ def resonance_loss(
     real: tf.Tensor,
     kernel: callable,
     kernel_widths: List[Tuple[float]],
-    resonances: int = 2,
+    resonances: int,
 ):
     """
     Calculate individual MMD2 losses for all
