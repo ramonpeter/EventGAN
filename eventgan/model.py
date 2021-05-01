@@ -37,10 +37,11 @@ class EventGAN:
         topology: List[Tuple[int]],
         input_masses: list,
         train_data_path: str,
+        train_updates_d: int,
+        train_updates_g: int,
         train_fraction: float,
         test_data_path: str,
         scaler: float,
-        save_path: str,
         g_units: int,
         g_layers: int,
         d_units: int,
@@ -69,6 +70,10 @@ class EventGAN:
                 to guarantee on-shell conditions for generated particles.
             train_data_path:
                 path to the file used for training.
+            train_updates_d:
+                number of discrimintor updates per training step.
+            train_updates_g:
+                number of generator updates per training step.
             train_fraction:
                 defines the fraction of data which is actually used
                 for training. Useful, to check stability.
@@ -79,9 +84,6 @@ class EventGAN:
                 scaler factor to preprocess the events.
                 Network performs best when scaler is choosen
                 such that stdev(data/scaler)~1.
-            save_path:
-                path where logs, plots and weights of the run
-                are saved.
             g_units:
                 number of units in each hidden Dense layer
                 in the generator.
@@ -175,7 +177,10 @@ class EventGAN:
         self.train_data_path = train_data_path
         self.test_data_path = test_data_path
         self.scaler = scaler
-        self.save_path = save_path
+
+        # Training parameters
+        self.train_updates_d = train_updates_d
+        self.train_updates_g = train_updates_g
 
         # Preprosess and load data
         self._initialize_data(train_fraction, input_masses)
@@ -302,71 +307,80 @@ class EventGAN:
     ):
         """Do a single train step"""
 
-        # Sample random points in the latent space
-        random_noise = tf.random.normal(shape=(batch_size, self.latent_dim))
-        # Decode them to fake images
-        gen_batch = self.generator([random_noise, mass_batch])
-
-        # Assemble labels discriminating real from fake images
-        ones = tf.ones((batch_size, 1))
-        zeros = tf.zeros((batch_size, 1))
-
+        # -----------------------
         # Train the discriminator
-        with tf.GradientTape() as tape:
-            logit_real = self.discriminator(real_batch)
-            logit_fake = self.discriminator(gen_batch)
+        # -----------------------
+        for _ in range(self.train_updates_d):
+            # Sample random points in the latent space
+            random_noise = tf.random.normal(shape=(batch_size, self.latent_dim))
+            # Decode them to fake images
+            gen_batch = self.generator([random_noise, mass_batch])
 
-            # Add gen and real loss
-            d_loss = self.bc_loss(ones, logit_real)
-            d_loss += self.bc_loss(zeros, logit_fake)
+            # Assemble labels discriminating real from fake images
+            ones = tf.ones((batch_size, 1))
+            zeros = tf.zeros((batch_size, 1))
 
-            # Add regularization
-            disc_reg = (
-                self.reg_weight
-                / 2
-                * self.disc_regularizer(logit_real, real_batch, logit_fake, gen_batch)
-            )
+            with tf.GradientTape() as tape:
+                logit_real = self.discriminator(real_batch)
+                logit_fake = self.discriminator(gen_batch)
 
-            d_loss += disc_reg
+                # Add gen and real loss
+                d_loss = self.bc_loss(ones, logit_real)
+                d_loss += self.bc_loss(zeros, logit_fake)
 
-        grads = tape.gradient(d_loss, self.discriminator.trainable_weights)
-        d_optimizer.apply_gradients(zip(grads, self.discriminator.trainable_weights))
-
-        # =========================================================#
-
-        # Sample random points in the latent space
-        random_noise = tf.random.normal(shape=(batch_size, self.latent_dim))
-
-        # Train the generator
-        with tf.GradientTape() as tape:
-            gen_out = self.generator(random_noise)
-            logit_fake = self.discriminator(gen_out)
-            g_loss = self.bc_loss(ones, logit_fake)
-
-            # Get the masses
-            res_gen = Resonances(
-                self.topology, dscaler=self.scaler, name="GenResonances"
-            )(gen_out)
-
-            res_real = Resonances(
-                self.topology, dscaler=self.scaler, name="RealResonances"
-            )(real_batch)
-
-            # Define the mmd loss function
-            if self.use_mmd_loss:  # Define the mmd floss function
-                mmd_loss = self.mmd_weight * self.mmd_loss(
-                    res_gen,
-                    res_real,
-                    self.mmd_kernel,
-                    self.mmd_kernel_widths,
-                    self.resonances,
+                # Add regularization
+                disc_reg = (
+                    self.reg_weight
+                    / 2
+                    * self.disc_regularizer(
+                        self.discriminator, real_batch, gen_batch, batch_size
+                    )
                 )
 
-                g_loss += mmd_loss
+                d_loss += disc_reg
 
-        grads = tape.gradient(g_loss, self.generator.trainable_weights)
-        g_optimizer.apply_gradients(zip(grads, self.generator.trainable_weights))
+            grads = tape.gradient(d_loss, self.discriminator.trainable_weights)
+            d_optimizer.apply_gradients(
+                zip(grads, self.discriminator.trainable_weights)
+            )
 
+        # -----------------------
+        # Train the generator
+        # -----------------------
+        for _ in range(self.train_updates_g):
+            # Sample random points in the latent space
+            random_noise = tf.random.normal(shape=(batch_size, self.latent_dim))
+
+            with tf.GradientTape() as tape:
+                gen_out = self.generator([random_noise, mass_batch])
+                logit_fake = self.discriminator(gen_out)
+                g_loss = self.bc_loss(ones, logit_fake)
+
+                # Get the masses
+                res_gen = Resonances(
+                    self.topology, scaler=self.scaler, name="GenResonances"
+                )(gen_out)
+
+                res_real = Resonances(
+                    self.topology, scaler=self.scaler, name="RealResonances"
+                )(real_batch)
+
+                # Define the mmd loss function
+                if self.use_mmd_loss:  # Define the mmd floss function
+                    mmd_loss = self.mmd_weight * self.mmd_loss(
+                        res_gen,
+                        res_real,
+                        self.mmd_kernel,
+                        self.mmd_kernel_widths,
+                        self.resonances,
+                    )
+
+                    g_loss += mmd_loss
+
+            grads = tape.gradient(g_loss, self.generator.trainable_weights)
+            g_optimizer.apply_gradients(zip(grads, self.generator.trainable_weights))
+
+        # Return losses
         if self.use_mmd_loss:
             return [d_loss, disc_reg], [g_loss, mmd_loss]
 
@@ -388,20 +402,20 @@ class EventGAN:
         batch = data[choice]
         return tf.convert_to_tensor(batch, dtype=tf.float32)
 
-    def save_weights(self, suffix: str = ""):
+    def save_weights(self, log_dir):
         """Save the model weights"""
         self.generator.save_weights(
-            f"{self.save_path}/generator_weights{suffix}.h5", save_format="h5"
+            f"{log_dir}/generator_weights.h5", save_format="h5"
         )
         self.discriminator.save_weights(
-            f"{self.save_path}/discriminator_weights{suffix}.h5", save_format="h5"
+            f"{log_dir}/discriminator_weights.h5", save_format="h5"
         )
 
-    def load_weights(self, suffix: str = ""):
+    def load_weights(self, log_dir):
         """Load the model weights"""
-        self.generator.load_weights(f"{self.save_path}/generator_weights{suffix}.h5")
+        self.generator.load_weights(f"{log_dir}/generator_weights.h5")
         self.discriminator.load_weights(
-            f"{self.save_path}/discriminator_weights{suffix}.h5"
+            f"{log_dir}/discriminator_weights.h5"
         )
 
     def get_events(self, n_samples):
@@ -419,6 +433,7 @@ class EventGAN:
         batch_size=1024,
         safe_weights: bool = False,
         safe_epochs: list = None,
+        log_dir: str="",
     ):
         """ Train the Model """
 
@@ -454,7 +469,7 @@ class EventGAN:
 
         g_loss_all = []
         d_loss_all = []
-        for step in range(epochs):
+        for step in range(iterations * epochs):
             epoch = math.floor(step / iterations)
 
             # Online GAN: fetch new batch every step
@@ -472,25 +487,25 @@ class EventGAN:
             d_loss_all.append(d_loss)
 
             # Logging.
-            if step % iterations == 0:
+            if (step + 1) % iterations == 0:
                 # Print metrics
                 print(
                     "Epoch #{}: Generative Loss: {}, Discriminator Loss: {}, Learning Rate: {}".format(
-                        step, g_loss, d_loss, g_optimizer._decayed_lr(tf.float32)
+                        epoch+1, g_loss[0].numpy(), d_loss[0].numpy(), g_optimizer._decayed_lr(tf.float32)
                     )
                 )
-                if epoch in safe_epochs:
+                if epoch+1 in safe_epochs:
                     if safe_weights:
                         if not os.path.exists(
-                            f"{self.save_path}/intermediate/epoch_{epoch}"
+                            f"{log_dir}/intermediate/epoch_{epoch}"
                         ):
-                            os.makedirs(f"{self.save_path}/intermediate/epoch_{epoch}")
+                            os.makedirs(f"{log_dir}/intermediate/epoch_{epoch}")
 
                         self.generator.save_weights(
-                            f"{self.save_path}/intermediate/epoch_{epoch}/weights_c_model.h5"
+                            f"{log_dir}/intermediate/epoch_{epoch}/generator_weights.h5"
                         )
                         self.discriminator.save_weights(
-                            f"{self.save_path}/intermediate/epoch_{epoch}/weights_c_model.h5"
+                            f"{log_dir}/intermediate/epoch_{epoch}/generator_weights.h5"
                         )
 
         return d_loss_all, g_loss_all

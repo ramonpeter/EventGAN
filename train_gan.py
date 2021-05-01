@@ -18,7 +18,7 @@ import argparse
 
 import yaml
 
-from eventgan.modules import EventGAN
+from eventgan.model import EventGAN
 from eventgan.utils.lhe_writer import LHEWriter
 from eventgan.utils.plots import plot_loss
 
@@ -38,9 +38,6 @@ if __name__ == "__main__":
     with args.file as f1:
         param_args = yaml.load(f1, Loader=yaml.FullLoader)
 
-    with args.file2 as f2:
-        plotting_args = yaml.load(f2, Loader=yaml.FullLoader)
-
     ########################################
     # Configuration
     ########################################
@@ -50,6 +47,7 @@ if __name__ == "__main__":
         "training": True,
         "save_weights": False,
         "plot_losses": False,
+        "use_mmd_loss": True,
         # intermediate action
         "save_intermediate_weights": True,
         "load_intermediate_weights": False,
@@ -59,9 +57,9 @@ if __name__ == "__main__":
         "n_events": 1000000,
         "save_lhe": True,
         # Input/Output/Name
-        "save_path": "/outputs",
-        "train_data_path": "/datasets/ttbar/ttbar_6f_train.h5",
-        "test_data_path": "/datasets/ttbar/ttbar_6f_test.h5",
+        "save_path": "outputs",
+        "train_data_path": "datasets/ttbar/ttbar_6f_train.h5",
+        "test_data_path": "datasets/ttbar/ttbar_6f_test.h5",
         "scaler": 450.0,
         "input_masses": [0.0, 0.0, 4.7, 0.0, 0.0, 4.7],
         "input_pdgs": [2, -1, 5, -2, 1, -5],
@@ -69,10 +67,10 @@ if __name__ == "__main__":
         # Training parameters
         "batch_size": 1024,
         "iterations_per_epoch": 1000,
-        "n_epochs": 1000,
-        "training_ratio_d": 1,
-        "training_ratio_g": 1,
-        "training_fraction": 1.0,
+        "epochs": 1000,
+        "train_updates_d": 1,
+        "train_updates_g": 1,
+        "train_fraction": 1.0,
         # Optimizer configurations
         "optimizer_args": {
             "g_lr": 0.001,
@@ -87,11 +85,11 @@ if __name__ == "__main__":
         # loss weights
         "loss_weights": {"reg_weight": 0.001, "mmd_weight": 1.0},
         # Process specific input
-        "kernel": "breit-wigner-mix",
-        "kernel_weights": [(1.49,), (1.49,), (2.05,), (2.05,)],
+        "mmd_kernel": "breit-wigner-mix",
+        "mmd_kernel_widths": [(1.49,), (1.49,), (2.05,), (2.05,)],
         "topology": [(0, 1), (3, 4), (0, 1, 2), (3, 4, 5)],
         # Parameters for model architectures
-        "latant_dim": 18,
+        "latent_dim": 18,
         "n_particles": 6,
         "g_units": 512,
         "d_units": 512,
@@ -117,8 +115,8 @@ if __name__ == "__main__":
 
     # Make output dir
     output_dir = params["save_path"]
-    file_path = str(params["n_epochs"]) + "epochs"
-    file_path += "/" + params["run_number"]
+    file_path = str(params["epochs"]) + "epochs"
+    file_path += "/" + params["run_tag"]
     log_dir = os.path.abspath(os.path.join(output_dir, file_path))
 
     if not os.path.exists(log_dir):
@@ -141,10 +139,11 @@ if __name__ == "__main__":
         "topology": params["topology"],
         "input_masses": params["input_masses"],
         "train_data_path": params["train_data_path"],
+        "train_updates_d": params["train_updates_d"],
+        "train_updates_g": params["train_updates_g"],
         "train_fraction": params["train_fraction"],
         "test_data_path": params["test_data_path"],
         "scaler": params["scaler"],
-        "save_path": params["save_path"],
         "g_units": params["g_units"],
         "g_layers": params["g_layers"],
         "d_units": params["d_units"],
@@ -165,11 +164,12 @@ if __name__ == "__main__":
     if params["training"]:
         train_params = {
             "optimizer_args": params["optimizer_args"],
-            "n_epochs": params["n_epochs"],
+            "epochs": params["epochs"],
             "batch_size": params["batch_size"],
             "iterations": params["iterations_per_epoch"],
             "safe_weights": params["save_intermediate_weights"],
             "safe_epochs": params["save_epochs"],
+            "log_dir": log_dir,
         }
 
         start_time = time.time()
@@ -184,16 +184,19 @@ if __name__ == "__main__":
 
         if params["plot_losses"]:
             plot_loss(
-                c_loss[params["iterations"] - 1 :: params["iterations"]],
+                c_loss[params["iterations_per_epoch"] - 1 :: params["iterations_per_epoch"]],
                 name="C",
                 log_dir=log_dir,
             )
 
             plot_loss(
-                g_loss[params["iterations"] - 1 :: params["iterations"]],
+                g_loss[params["iterations_per_epoch"] - 1 :: params["iterations_per_epoch"]],
                 name="G",
                 log_dir=log_dir,
             )
+    else:
+        print("Load weights..")
+        gan.load_weights(log_dir)
 
     #######################################################################
     # Generate events and save as LHE file

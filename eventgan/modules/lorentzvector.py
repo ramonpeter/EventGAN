@@ -1,7 +1,5 @@
 """Lorentzvector Layer."""
 
-import numpy as np
-
 import tensorflow as tf
 from tensorflow.keras import backend as K
 
@@ -100,18 +98,19 @@ class LorentzVector(tf.keras.layers.Layer):
 
         self.shape_dim = self.nout * self.n_particles
 
-    def call(self, x):
-        """Build the actual logic."""
-
-        # (None, n_features_in * n_particles) -> (None, n_features_out * n_particles)
-        out_features = []
-
         if self.mass_in:
             metric_vector = [1.0, 1.0, 1.0, 1.0]
         else:
             metric_vector = [1.0, -1.0, -1.0, -1.0]
 
-        metric = K.variable(np.array(metric_vector))
+        self.metric = tf.constant(metric_vector)
+
+
+    def call(self, x):
+        """Build the actual logic."""
+
+        # (None, n_features_in * n_particles) -> (None, n_features_out * n_particles)
+        out_features = []
 
         # rescale variables
         x = self.dscaler * x
@@ -143,10 +142,10 @@ class LorentzVector(tf.keras.layers.Layer):
 
         if self.mass_in:
             Ms = x[:, 0, :]
-            Es = tf.sqrt(tf.maximum(tf.tensordot(x2, metric, axes=[1, 0]), K.epsilon()))
+            Es = tf.sqrt(tf.maximum(tf.tensordot(x2, self.metric, axes=[1, 0]), K.epsilon()))
         else:
             Es = x[:, 0, :]
-            Ms = tf.sqrt(tf.maximum(tf.tensordot(x2, metric, axes=[1, 0]), K.epsilon()))
+            Ms = tf.sqrt(tf.maximum(tf.tensordot(x2, self.metric, axes=[1, 0]), K.epsilon()))
 
         # Momentum
         Ps = tf.sqrt(tf.maximum(x2[:, 1, :] + x2[:, 2, :] + x2[:, 3, :], K.epsilon()))

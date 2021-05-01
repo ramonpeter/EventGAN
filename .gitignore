@@ -9,10 +9,14 @@ __pycache__/
 # Distribution / packaging
 .DS_Store
 .Python
+.pylintrc
+setup.cfg
+.vscode
 build/
 develop-eggs/
 dist/
 downloads/
+outputs/
 eggs/
 .eggs/
 lib/

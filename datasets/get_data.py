@@ -4,11 +4,8 @@ import os
 import wget
 
 # Make ttbar DIR
-PARENT_DIR = "../datasets"
-DIR = "../datasets/ttbar"
-
-PATH = os.path.abspath(os.path.join(PARENT_DIR, DIR))
-
+DIR = "datasets/ttbar"
+PATH = os.path.abspath(DIR)
 if not os.path.exists(PATH):
     os.makedirs(PATH)
 
@@ -21,4 +18,4 @@ URLS = [
 NAMES = ["ttbar_6f_train.h5", "ttbar_6f_test.h5", "README.txt"]
 
 for url, name in zip(URLS, NAMES):
-    wget.download(url, f"ttbar/{name}")
+    wget.download(url, f"{DIR}/{name}")
