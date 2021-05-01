@@ -49,7 +49,7 @@ Download + Usage
 .. code:: sh
 
    # clone the repository
-   git clone https://github.com/itp-mlhep/EventGAN.git
+   git clone https://github.com/ramonpeter/EventGAN.git
    # then download the datasets
    cd EventGAN
    python datasets/get_data.py
