@@ -275,7 +275,10 @@ class EventGAN:
 
         data = pd.read_hdf(self.train_data_path)
         data = data.iloc[:, :].values
-        train_data, _ = train_test_split(data, train_size=training_fraction)
+        if training_fraction >= 1.0:
+            train_data = data
+        else:
+            train_data, _ = train_test_split(data, train_size=training_fraction)
 
         # define different validation/test set
         try:

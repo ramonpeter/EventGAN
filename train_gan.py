@@ -62,7 +62,7 @@ if __name__ == "__main__":
         "test_data_path": "datasets/ttbar/ttbar_6f_test.h5",
         "scaler": 450.0,
         "input_masses": [0.0, 0.0, 4.7, 0.0, 0.0, 4.7],
-        "input_pdgs": [2, -1, 5, -2, 1, -5],
+        "input_pdgs": [1, -2, -5, 2, -1, 5],
         "run_tag": "paper_01",
         # Training parameters
         "batch_size": 1024,
@@ -70,7 +70,7 @@ if __name__ == "__main__":
         "epochs": 1000,
         "train_updates_d": 1,
         "train_updates_g": 1,
-        "train_fraction": 1.0,
+        "train_fraction": 0.5,
         # Optimizer configurations
         "optimizer_args": {
             "g_lr": 0.001,
