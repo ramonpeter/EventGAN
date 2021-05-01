@@ -178,11 +178,11 @@ class EventGAN:
         self.save_path = save_path
 
         # Preprosess and load data
-        self.initialize_data(train_fraction, input_masses)
+        self._initialize_data(train_fraction, input_masses)
 
         # Define networks
-        self.generator = self.get_generator(g_units, g_layers)
-        self.discriminator = self.get_discriminator(d_units, d_layers)
+        self.generator = self._get_generator(g_units, g_layers)
+        self.discriminator = self._get_discriminator(d_units, d_layers)
 
         # Define loss functions
         self.bc_loss = tf.keras.losses.BinaryCrossentropy(from_logits=True)
@@ -190,7 +190,11 @@ class EventGAN:
         self.disc_regularizer = discriminator_regularizer
         self.reg_weight = reg_weight
 
-    def get_generator(self, n_units: int, n_layers: int):
+    # ================
+    # PRIVATE METHODS
+    # ================
+
+    def _get_generator(self, n_units: int, n_layers: int):
         """
         Generator model for the EventGAN framework
         ----------
@@ -199,7 +203,7 @@ class EventGAN:
         n_layers    : number of layers.
         ----------
         Input:
-        (noise, masses): (tf.Tensor of shape (batch_size, 3 * n_particles),
+        (noise, masses): (tf.Tensor of shape (batch_size, latent_dim),
                         tf.Tensor of shape (batch_size, n_particles )) --
                         the noise input and the masses of the outgoing particles
         ----------
@@ -208,7 +212,7 @@ class EventGAN:
                     the 4-momenta of the events as (E1,px1,py1,pz1,E2,...)
         """
         # Input
-        noise = tf.keras.layers.Input(shape=(3 * self.n_particles,), name="noise")
+        noise = tf.keras.layers.Input(shape=(self.latent_dim,), name="noise")
         masses = tf.keras.layers.Input(shape=(self.n_particles,), name="masses")
 
         # hidden layers
@@ -231,7 +235,7 @@ class EventGAN:
 
         return tf.keras.Model([noise, masses], four_momenta, name="Generator")
 
-    def get_discriminator(self, n_units: int, n_layers: int):
+    def _get_discriminator(self, n_units: int, n_layers: int):
         """
         Discriminator model for the EventGAN framework
         ----------
@@ -261,23 +265,7 @@ class EventGAN:
 
         return tf.keras.Model(events, logit, name="Discriminator")
 
-    def save_weights(self, suffix: str = ""):
-        """Save the model weights"""
-        self.generator.save_weights(
-            f"{self.save_path}/generator_weights{suffix}.h5", save_format="h5"
-        )
-        self.discriminator.save_weights(
-            f"{self.save_path}/discriminator_weights{suffix}.h5", save_format="h5"
-        )
-
-    def load_weights(self, suffix: str = ""):
-        """Load the model weights"""
-        self.generator.load_weights(f"{self.save_path}/generator_weights{suffix}.h5")
-        self.discriminator.load_weights(
-            f"{self.save_path}/discriminator_weights{suffix}.h5"
-        )
-
-    def initialize_data(self, training_fraction: float, input_masses: list):
+    def _initialize_data(self, training_fraction: float, input_masses: list):
         """Get input data and preprocess"""
 
         data = pd.read_hdf(self.train_data_path)
@@ -303,27 +291,8 @@ class EventGAN:
         self.test_data = test_data / self.scaler
         self.masses = masses / self.scaler
 
-    @staticmethod
-    def sample_data(data, batch_size):
-        """Get array of samples from loaded data"""
-        index = np.arange(data.shape[0])
-        if batch_size <= data.shape[0]:
-            choice = np.random.choice(index, batch_size, replace=False)
-        else:
-            choice = np.random.choice(index, batch_size, replace=True)
-
-        batch = data[choice]
-        return tf.convert_to_tensor(batch, dtype=tf.float32)
-
-    def get_events(self, n_samples):
-        """Sample events"""
-        noise = tf.random.normal(shape=(n_samples, self.latent_dim))
-        mass_batch = tf.repeat(self.masses, n_samples, axis=0)
-        events = self.scaler * self.generator([noise, mass_batch])
-        return events.numpy()
-
     @tf.function
-    def train_step(
+    def _train_step(
         self,
         real_batch: tf.Tensor,
         mass_batch: tf.Tensor,
@@ -352,11 +321,13 @@ class EventGAN:
             d_loss += self.bc_loss(zeros, logit_fake)
 
             # Add regularization
-            disc_reg = self.disc_regularizer(
-                logit_real, real_batch, logit_fake, gen_batch
+            disc_reg = (
+                self.reg_weight
+                / 2
+                * self.disc_regularizer(logit_real, real_batch, logit_fake, gen_batch)
             )
 
-            d_loss += self.reg_weight / 2 * disc_reg
+            d_loss += disc_reg
 
         grads = tape.gradient(d_loss, self.discriminator.trainable_weights)
         d_optimizer.apply_gradients(zip(grads, self.discriminator.trainable_weights))
@@ -381,21 +352,64 @@ class EventGAN:
                 self.topology, dscaler=self.scaler, name="RealResonances"
             )(real_batch)
 
-            # Define the mmd floss function
-            mmd_loss = self.mmd_loss(
-                res_gen,
-                res_real,
-                self.mmd_kernel,
-                self.mmd_kernel_widths,
-                resonances=self.resonances,
-            )
+            # Define the mmd loss function
+            if self.use_mmd_loss:  # Define the mmd floss function
+                mmd_loss = self.mmd_weight * self.mmd_loss(
+                    res_gen,
+                    res_real,
+                    self.mmd_kernel,
+                    self.mmd_kernel_widths,
+                    self.resonances,
+                )
 
-            g_loss += self.mmd_weight * mmd_loss
+                g_loss += mmd_loss
 
         grads = tape.gradient(g_loss, self.generator.trainable_weights)
         g_optimizer.apply_gradients(zip(grads, self.generator.trainable_weights))
 
-        return d_loss, g_loss
+        if self.use_mmd_loss:
+            return [d_loss, disc_reg], [g_loss, mmd_loss]
+
+        return [d_loss, disc_reg], [g_loss]
+
+    # ================
+    # PUBLIC METHODS
+    # ================
+
+    @staticmethod
+    def sample_data(data, batch_size):
+        """Get array of samples from loaded data"""
+        index = np.arange(data.shape[0])
+        if batch_size <= data.shape[0]:
+            choice = np.random.choice(index, batch_size, replace=False)
+        else:
+            choice = np.random.choice(index, batch_size, replace=True)
+
+        batch = data[choice]
+        return tf.convert_to_tensor(batch, dtype=tf.float32)
+
+    def save_weights(self, suffix: str = ""):
+        """Save the model weights"""
+        self.generator.save_weights(
+            f"{self.save_path}/generator_weights{suffix}.h5", save_format="h5"
+        )
+        self.discriminator.save_weights(
+            f"{self.save_path}/discriminator_weights{suffix}.h5", save_format="h5"
+        )
+
+    def load_weights(self, suffix: str = ""):
+        """Load the model weights"""
+        self.generator.load_weights(f"{self.save_path}/generator_weights{suffix}.h5")
+        self.discriminator.load_weights(
+            f"{self.save_path}/discriminator_weights{suffix}.h5"
+        )
+
+    def get_events(self, n_samples):
+        """Sample events"""
+        noise = tf.random.normal(shape=(n_samples, self.latent_dim))
+        mass_batch = tf.repeat(self.masses, n_samples, axis=0)
+        events = self.scaler * self.generator([noise, mass_batch])
+        return events.numpy()
 
     def train(
         self,
@@ -410,16 +424,16 @@ class EventGAN:
 
         # Optimizer and scheduler
         lr_schedule_g = tf.keras.optimizers.schedules.InverseTimeDecay(
-            optimizer_args["lr_g"],
+            optimizer_args["g_lr"],
             iterations,
-            optimizer_args["decay_g"],
+            optimizer_args["g_decay"],
             staircase=True,
         )
 
         lr_schedule_d = tf.keras.optimizers.schedules.InverseTimeDecay(
-            optimizer_args["lr_d"],
+            optimizer_args["d_lr"],
             iterations,
-            optimizer_args["decay_d"],
+            optimizer_args["d_decay"],
             staircase=True,
         )
 
@@ -438,6 +452,8 @@ class EventGAN:
 
         mass_batch = tf.repeat(self.masses, batch_size, axis=0)
 
+        g_loss_all = []
+        d_loss_all = []
         for step in range(epochs):
             epoch = math.floor(step / iterations)
 
@@ -447,9 +463,13 @@ class EventGAN:
             )
 
             # Train the discriminator & generator on one batch of real images.
-            d_loss, g_loss = self.train_step(
+            d_loss, g_loss = self._train_step(
                 real_batch, mass_batch, d_optimizer, g_optimizer, batch_size=batch_size
             )
+
+            # Append loss
+            g_loss_all.append(g_loss)
+            d_loss_all.append(d_loss)
 
             # Logging.
             if step % iterations == 0:
@@ -466,11 +486,11 @@ class EventGAN:
                         ):
                             os.makedirs(f"{self.save_path}/intermediate/epoch_{epoch}")
 
-                    self.generator.save_weights(
-                        f"{self.save_path}/intermediate/epoch_{epoch}/weights_c_model.h5"
-                    )
-                    self.discriminator.save_weights(
-                        f"{self.save_path}/intermediate/epoch_{epoch}/weights_c_model.h5"
-                    )
+                        self.generator.save_weights(
+                            f"{self.save_path}/intermediate/epoch_{epoch}/weights_c_model.h5"
+                        )
+                        self.discriminator.save_weights(
+                            f"{self.save_path}/intermediate/epoch_{epoch}/weights_c_model.h5"
+                        )
 
-        return d_loss, g_loss
+        return d_loss_all, g_loss_all

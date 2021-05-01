@@ -25,7 +25,7 @@ def plot_loss(loss, log_dir=".", name=""):
             plt.plot(epoch, loss[:, 0], color="red", markersize=12, label=r"Total")
             plt.plot(
                 epoch,
-                loss[:, 1],
+                loss[:, 0] - loss[:, 1],
                 color="green",
                 markersize=12,
                 label=r"BC Loss",
@@ -33,16 +33,35 @@ def plot_loss(loss, log_dir=".", name=""):
             )
             plt.plot(
                 epoch,
-                loss[:, 2],
+                loss[:, 1],
                 color="royalblue",
                 markersize=12,
                 label=r"Gradient Penalty",
                 linestyle="dashed",
             )
         except:
-            plt.plot(epoch, loss, color="red", markersize=12, label=r"BC Loss")
+            plt.plot(epoch, loss[:, 0], color="red", markersize=12, label=r"BC Loss")
     else:
-        plt.plot(epoch, loss, color="red", markersize=12, label=r"BC Loss")
+        try:
+            plt.plot(epoch, loss[:, 0], color="red", markersize=12, label=r"Total")
+            plt.plot(
+                epoch,
+                loss[:, 0] - loss[:, 1],
+                color="green",
+                markersize=12,
+                label=r"BC Loss",
+                linestyle="dashed",
+            )
+            plt.plot(
+                epoch,
+                loss[:, 1],
+                color="royalblue",
+                markersize=12,
+                label=r"MMD Loss",
+                linestyle="dashed",
+            )
+        except:
+            plt.plot(epoch, loss[:, 0], color="red", markersize=12, label=r"BC Loss")
 
     ax1.legend(
         loc="upper center",
